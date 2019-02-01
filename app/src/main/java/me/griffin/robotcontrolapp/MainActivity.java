@@ -11,6 +11,7 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
@@ -18,10 +19,12 @@ import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
 import android.media.ImageReader;
 import android.opengl.GLES20;
+import android.opengl.GLException;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.Message;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -53,9 +56,11 @@ import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 import java.util.Set;
 
 import javax.microedition.khronos.egl.EGLConfig;
@@ -70,6 +75,8 @@ import me.griffin.robotcontrolapp.arcore.rendering.ObjectRenderer;
 import me.griffin.robotcontrolapp.arcore.rendering.PlaneRenderer;
 import me.griffin.robotcontrolapp.arcore.rendering.PointCloudRenderer;
 import me.griffin.robotcontrolapp.remoteconnection.ClientThread;
+import me.griffinbeck.server.BackLoadedCommandPacket;
+import me.griffinbeck.server.cmdresponses.CommandArguments;
 
 public class MainActivity extends AppCompatActivity implements JoystickView.JoystickListener, GLSurfaceView.Renderer {
     /*
@@ -149,8 +156,9 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
     private JoystickView joystick;
     private Menu menu;
     //Start Camera2 Code
-    /*private Handler cameraCaptuerHandler;
-    private TextureView textureView;
+    private Handler cameraCaptuerHandler;
+    private byte[] bitmapArrayToSend;
+    private long timeOfLastFrame;
     private Runnable cameraViewChecker = new Runnable() {
         @Override
         public void run() {
@@ -159,13 +167,12 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
                     @Override
                     public void run() {
                         if (CurrentCommandHolder.serverConnectionOpen && CurrentCommandHolder.isIsCameraOpen()) {
-                            textureView.setVisibility(View.VISIBLE);
+
                             joystick.setVisibility(View.INVISIBLE);
                             Log.i("RobotControl", "Queued Frame");
-                            if (textureView.getBitmap() != null)
-                                CurrentCommandHolder.addNetworkPacket(new BackLoadedCommandPacket(new String[]{CommandArguments.BACKLOADED_PACKET_IMG.toString()}, getBitMapByteArray(textureView.getBitmap())));
+                            if (bitmapArrayToSend != null)
+                                CurrentCommandHolder.addNetworkPacket(new BackLoadedCommandPacket(new String[]{CommandArguments.BACKLOADED_PACKET_IMG.toString()}, bitmapArrayToSend));
                         } else {
-                            textureView.setVisibility(View.INVISIBLE);
                             joystick.setVisibility(View.VISIBLE);
                         }
 
@@ -178,57 +185,6 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
             }
         }
     };
-    private String cameraId;
-    private Size imageDimension;
-    TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
-        @Override
-        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-            //open your camera here
-            openCamera();
-        }
-
-        @Override
-        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-            // Transform you image captured size according to the surface width and height
-        }
-
-        @Override
-        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-            return false;
-        }
-
-        @Override
-        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-        }
-    };
-    private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
-        @Override
-        public void onOpened(CameraDevice camera) {
-            //This is called when the camera is open
-            //Log.e(TAG, "onOpened");
-            cameraDevice = camera;
-            createCameraPreview();
-        }
-
-        @Override
-        public void onDisconnected(CameraDevice camera) {
-            cameraDevice.close();
-        }
-
-        @Override
-        public void onError(CameraDevice camera, int error) {
-            cameraDevice.close();
-            cameraDevice = null;
-        }
-    };
-    final CameraCaptureSession.CaptureCallback captureCallbackListener = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
-            //Toast.makeText(MainActivity.this, "Saved:" + file, Toast.LENGTH_SHORT).show();
-            createCameraPreview();
-        }
-    };
 
     private byte[] getBitMapByteArray(Bitmap bitmap) {
         //Bitmap bmp = intent.getExtras().get("data");
@@ -238,83 +194,7 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         bitmap.recycle();
         return byteArray;
     }
-
-    private void openCamera() {
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-        //Log.e(TAG, "is camera open");
-        try {
-            String cameraId = manager.getCameraIdList()[0];
-            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
-            StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            assert map != null;
-            imageDimension = map.getOutputSizes(SurfaceTexture.class)[0];
-            // Add permission for camera and let user grant the permission
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, 101);
-                return;
-            }
-            manager.openCamera(cameraId, stateCallback, null);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-        //Log.e(TAG, "openCamera X");
-    }
-
-    protected void createCameraPreview() {
-        try {
-            SurfaceTexture texture = textureView.getSurfaceTexture();
-            assert texture != null;
-            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
-            Surface surface = new Surface(texture);
-            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
-            captureRequestBuilder.addTarget(surface);
-            //captureRequestBuilder.addTarget(mOnImageAvailableListener);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
-                @Override
-                public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    //The camera is already closed
-                    if (null == cameraDevice) {
-                        return;
-                    }
-                    // When the session is ready, we start displaying the preview.
-                    cameraCaptureSessions = cameraCaptureSession;
-                    updatePreview();
-                }
-
-                @Override
-                public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    Toast.makeText(MainActivity.this, "Configuration change", Toast.LENGTH_SHORT).show();
-                }
-            }, null);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-    }
-
-    protected void updatePreview() {
-        if (null == cameraDevice) {
-            //Log.e(TAG, "updatePreview error, return");
-        }
-        captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-        try {
-            cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), null, cameraCaptuerHandler);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-    }*/
-    //End Camera2 Code
-
-    private void closeCamera() {
-        if (null != cameraDevice) {
-            cameraDevice.close();
-            cameraDevice = null;
-        }
-        /*if (null != imageReader) {
-            imageReader.close();
-            imageReader = null;
-        }*/
-    }
+    //End Camera Code
 
     ///////////ARCORE STARTS HERE
     private static final String TAG = HelloArActivity.class.getSimpleName();
@@ -545,11 +425,8 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         }
         arCoreOnCreate();
         //Camera2
-        /*cameraHandler = new Handler(Looper.myLooper());
+        cameraHandler = new Handler(Looper.myLooper());
         cameraViewChecker.run();
-        textureView = findViewById(R.id.camera_preview);
-        assert textureView != null;
-        textureView.setSurfaceTextureListener(textureListener);*/
         //End Camera2 Code
         //ipText = findViewById(R.id.ipAddress);
         consoleScroll = findViewById(R.id.consoleScroll);
@@ -815,11 +692,44 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
             // Visualize planes.
             planeRenderer.drawPlanes(
                     arSession.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
-
+            if (System.currentTimeMillis() - 100 > timeOfLastFrame) {
+                bitmapArrayToSend = createBitmapArrayFromGLSurface(0, 0, surfaceView.getWidth(), surfaceView.getHeight(), gl);
+            }
         } catch (Throwable t) {
             // Avoid crashing the application due to unhandled exceptions.
             Log.e(TAG, "Exception on the OpenGL thread", t);
         }
+    }
+
+    private byte[] createBitmapArrayFromGLSurface(int x, int y, int w, int h, GL10 gl)
+            throws OutOfMemoryError {
+        int bitmapBuffer[] = new int[w * h];
+        int bitmapSource[] = new int[w * h];
+        IntBuffer intBuffer = IntBuffer.wrap(bitmapBuffer);
+        intBuffer.position(0);
+
+        try {
+            gl.glReadPixels(x, y, w, h, GL10.GL_RGBA, GL10.GL_UNSIGNED_BYTE, intBuffer);
+            int offset1, offset2;
+            for (int i = 0; i < h; i++) {
+                offset1 = i * w;
+                offset2 = (h - i - 1) * w;
+                for (int j = 0; j < w; j++) {
+                    int texturePixel = bitmapBuffer[offset1 + j];
+                    int blue = (texturePixel >> 16) & 0xff;
+                    int red = (texturePixel << 16) & 0x00ff0000;
+                    int pixel = (texturePixel & 0xff00ff00) | red | blue;
+                    bitmapSource[offset2 + j] = pixel;
+                }
+            }
+        } catch (GLException e) {
+            return null;
+        }
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        Bitmap.createBitmap(bitmapSource, w, h, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.WEBP, 10, stream);
+
+        return stream.toByteArray();
+        //return Bitmap.createBitmap(bitmapSource, w, h, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.WEBP,10,);
     }
 
     @Override
