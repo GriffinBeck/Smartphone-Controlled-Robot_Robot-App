@@ -35,7 +35,6 @@ import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -343,12 +342,7 @@ public class PlaneRenderer {
         }
         Collections.sort(
                 sortedPlanes,
-                new Comparator<SortablePlane>() {
-                    @Override
-                    public int compare(SortablePlane a, SortablePlane b) {
-                        return Float.compare(a.distance, b.distance);
-                    }
-                });
+                (a, b) -> Float.compare(a.distance, b.distance));
 
         float[] cameraView = new float[16];
         cameraPose.inverse().toMatrix(cameraView, 0);

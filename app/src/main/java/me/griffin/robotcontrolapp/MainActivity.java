@@ -11,36 +11,26 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
-import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
-import android.hardware.camera2.CameraManager;
-import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.TotalCaptureResult;
-import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
+import android.opengl.GLES20;
+import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.Message;
-import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.text.InputType;
 import android.util.Log;
-import android.util.Size;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.Surface;
-import android.view.TextureView;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -50,20 +40,38 @@ import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import com.google.ar.core.ArCoreApk;
+import com.google.ar.core.Camera;
+import com.google.ar.core.Frame;
+import com.google.ar.core.Plane;
+import com.google.ar.core.PointCloud;
 import com.google.ar.core.Session;
+import com.google.ar.core.TrackingState;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
+import com.google.ar.core.exceptions.UnavailableApkTooOldException;
+import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
+import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
+import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 
-import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Set;
 
-import me.griffin.robotcontrolapp.remoteconnection.ClientThread;
-import me.griffinbeck.server.BackLoadedCommandPacket;
-import me.griffinbeck.server.cmdresponses.CommandArguments;
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
 
-public class MainActivity extends AppCompatActivity implements JoystickView.JoystickListener {
+import me.griffin.robotcontrolapp.arcore.HelloArActivity;
+import me.griffin.robotcontrolapp.arcore.helpers.CameraPermissionHelper;
+import me.griffin.robotcontrolapp.arcore.helpers.DisplayRotationHelper;
+import me.griffin.robotcontrolapp.arcore.helpers.SnackbarHelper;
+import me.griffin.robotcontrolapp.arcore.rendering.BackgroundRenderer;
+import me.griffin.robotcontrolapp.arcore.rendering.ObjectRenderer;
+import me.griffin.robotcontrolapp.arcore.rendering.PlaneRenderer;
+import me.griffin.robotcontrolapp.arcore.rendering.PointCloudRenderer;
+import me.griffin.robotcontrolapp.remoteconnection.ClientThread;
+
+public class MainActivity extends AppCompatActivity implements JoystickView.JoystickListener, GLSurfaceView.Renderer {
     /*
      * Notifications from UsbService will be received here.
      */
@@ -141,7 +149,7 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
     private JoystickView joystick;
     private Menu menu;
     //Start Camera2 Code
-    private Handler cameraCaptuerHandler;
+    /*private Handler cameraCaptuerHandler;
     private TextureView textureView;
     private Runnable cameraViewChecker = new Runnable() {
         @Override
@@ -221,7 +229,6 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
             createCameraPreview();
         }
     };
-    private Session arSession;
 
     private byte[] getBitMapByteArray(Bitmap bitmap) {
         //Bitmap bmp = intent.getExtras().get("data");
@@ -295,7 +302,7 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
-    }
+    }*/
     //End Camera2 Code
 
     private void closeCamera() {
@@ -309,83 +316,8 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         }*/
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        joystick = new JoystickView(this);
-        setContentView(R.layout.activity_main);
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.INTERNET}, 101);
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 101);
-        }
-        if (ContextCompat.checkSelfPermission(this, "com.android.example.USB_PERMISSION") != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
-            ActivityCompat.requestPermissions(this, new String[]{"com.android.example.USB_PERMISSION"}, 101);
-        }
-        runARCoreCheck();
-        //Camera Stream
-        /*mCamera = getCameraInstance();
-        cameraPreview = new MyCameraView(this, mCamera);
-        FrameLayout preview = (FrameLayout) findViewById(R.id.camera_preview);
-        preview.addView(cameraPreview);*/
-        cameraHandler = new Handler(Looper.myLooper());
-        cameraViewChecker.run();
-        //END Camera Stream Code
-        //Start Camera2 Code
-        textureView = findViewById(R.id.camera_preview);
-        assert textureView != null;
-        textureView.setSurfaceTextureListener(textureListener);
-        //End Camera2 Code
-        //ipText = findViewById(R.id.ipAddress);
-        consoleScroll = findViewById(R.id.consoleScroll);
-        console = findViewById(R.id.console);
-        consoleScroll.fullScroll(View.FOCUS_DOWN);
-        //server = new Server(getLocalIpAddress());
-        mHandler = new MyHandler(this);
-        /*toggleSerial.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
-                if (isChecked) {
-                    CurrentCommandHolder.startThread(MainActivity.this);
-                    //serialComms.startAutoSerial();
-                } else {
-                    CurrentCommandHolder.stopThread(MainActivity.this);
-                    //serialComms.stopAutoSerial();
-                }
-            }
-        });
-        toggleServer.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
-                *//**
-         * TODO: Convert to one time button press
-         *//*
-                //Log.e("BUTTON", "BUTTTON WAS PRESSED Casdasdasdasdasdasdasda");
-                if (isChecked) {
-                    //Log.e("BUTTON", "BUTTTON WAS PRESSED CORRECTLY");
-                    //server.startServer();
-                    openConnectionDialog();
-                    *//*new Timer().schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (CurrentCommandHolder.serverSatus) {
-                                        ipText.setText("IP Address: " + CurrentCommandHolder.getIp() + ":" + CurrentCommandHolder.getPort());
-                                    }
-                                }
-                            });
-                        }
-                    }, 1000);*//*
-                }
-            }
-        });*/
-        CurrentCommandHolder.usbService = new UsbService();
-        startService();
-        setFilters();
-    }
+    ///////////ARCORE STARTS HERE
+    private static final String TAG = HelloArActivity.class.getSimpleName();
 
     public BroadcastReceiver getmUsbReceiver() {
         return mUsbReceiver;
@@ -395,25 +327,8 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         return mHandler;
     }
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        setFilters();  // Start listening notifications from UsbService
-        startService(); // Start UsbService(if it was not started before) and Bind it
-        if (textureView.isAvailable()) {
-            openCamera();
-        } else {
-            textureView.setSurfaceTextureListener(textureListener);
-        }
-        runARCoreCheck();
-    }
-
-    @Override
-    public void onPause() {
-        super.onPause();
-        unregisterReceiver(mUsbReceiver);
-        unbindService(usbConnection);
-    }
+    private final SnackbarHelper messageSnackbarHelper = new SnackbarHelper();
+    private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
 
     @Override
     protected void onDestroy() {
@@ -601,4 +516,323 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
             }
         }
     }
+
+    private final ObjectRenderer virtualObject = new ObjectRenderer();
+    private final ObjectRenderer virtualObjectShadow = new ObjectRenderer();
+    private final PlaneRenderer planeRenderer = new PlaneRenderer();
+    private final PointCloudRenderer pointCloudRenderer = new PointCloudRenderer();
+    // Temporary matrix allocated here to reduce number of allocations for each frame.
+    private final float[] anchorMatrix = new float[16];
+    // Rendering. The Renderers are created here, and initialized when the GL surface is created.
+    private GLSurfaceView surfaceView;
+    private boolean installRequested;
+    private Session arSession;
+    private DisplayRotationHelper displayRotationHelper;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        joystick = new JoystickView(this);
+        setContentView(R.layout.activity_main);
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.INTERNET}, 101);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 101);
+        }
+        if (ContextCompat.checkSelfPermission(this, "com.android.example.USB_PERMISSION") != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
+            ActivityCompat.requestPermissions(this, new String[]{"com.android.example.USB_PERMISSION"}, 101);
+        }
+        arCoreOnCreate();
+        //Camera2
+        /*cameraHandler = new Handler(Looper.myLooper());
+        cameraViewChecker.run();
+        textureView = findViewById(R.id.camera_preview);
+        assert textureView != null;
+        textureView.setSurfaceTextureListener(textureListener);*/
+        //End Camera2 Code
+        //ipText = findViewById(R.id.ipAddress);
+        consoleScroll = findViewById(R.id.consoleScroll);
+        console = findViewById(R.id.console);
+        consoleScroll.fullScroll(View.FOCUS_DOWN);
+        //server = new Server(getLocalIpAddress());
+        mHandler = new MyHandler(this);
+        /*toggleSerial.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
+                if (isChecked) {
+                    CurrentCommandHolder.startThread(MainActivity.this);
+                    //serialComms.startAutoSerial();
+                } else {
+                    CurrentCommandHolder.stopThread(MainActivity.this);
+                    //serialComms.stopAutoSerial();
+                }
+            }
+        });
+        toggleServer.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
+                *//**
+         * TODO: Convert to one time button press
+         *//*
+                //Log.e("BUTTON", "BUTTTON WAS PRESSED Casdasdasdasdasdasdasda");
+                if (isChecked) {
+                    //Log.e("BUTTON", "BUTTTON WAS PRESSED CORRECTLY");
+                    //server.startServer();
+                    openConnectionDialog();
+                    *//*new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (CurrentCommandHolder.serverSatus) {
+                                        ipText.setText("IP Address: " + CurrentCommandHolder.getIp() + ":" + CurrentCommandHolder.getPort());
+                                    }
+                                }
+                            });
+                        }
+                    }, 1000);*//*
+                }
+            }
+        });*/
+        CurrentCommandHolder.usbService = new UsbService();
+        startService();
+        setFilters();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        setFilters();  // Start listening notifications from UsbService
+        startService(); // Start UsbService(if it was not started before) and Bind it
+        /*if (textureView.isAvailable()) {
+            openCamera();
+        } else {
+            textureView.setSurfaceTextureListener(textureListener);
+        }*/
+        arCoreOnResume();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        unregisterReceiver(mUsbReceiver);
+        unbindService(usbConnection);
+        arCoreOnPause();
+    }
+
+    private void arCoreOnCreate() {
+        surfaceView = findViewById(R.id.camera_preview);
+        displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
+
+        // Set up renderer.
+        surfaceView.setPreserveEGLContextOnPause(true);
+        surfaceView.setEGLContextClientVersion(2);
+        surfaceView.setEGLConfigChooser(8, 8, 8, 8, 16, 0); // Alpha used for plane blending.
+        surfaceView.setRenderer(this);
+        surfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+        surfaceView.setWillNotDraw(false);
+
+        installRequested = false;
+    }
+
+    private void arCoreOnPause() {
+        if (arSession != null) {
+            // Note that the order matters - GLSurfaceView is paused first so that it does not try
+            // to query the session. If Session is paused before GLSurfaceView, GLSurfaceView may
+            // still call session.update() and get a SessionPausedException.
+            displayRotationHelper.onPause();
+            surfaceView.onPause();
+            arSession.pause();
+        }
+    }
+
+    private void arCoreOnResume() {
+        if (arSession == null) {
+            Exception exception = null;
+            String message = null;
+            try {
+                switch (ArCoreApk.getInstance().requestInstall(this, !installRequested)) {
+                    case INSTALL_REQUESTED:
+                        installRequested = true;
+                        return;
+                    case INSTALLED:
+                        break;
+                }
+
+                // ARCore requires camera permissions to operate. If we did not yet obtain runtime
+                // permission on Android M and above, now is a good time to ask the user for it.
+                if (!CameraPermissionHelper.hasCameraPermission(this)) {
+                    CameraPermissionHelper.requestCameraPermission(this);
+                    return;
+                }
+
+                // Create the session.
+                arSession = new Session(/* context= */ this);
+
+            } catch (UnavailableArcoreNotInstalledException
+                    | UnavailableUserDeclinedInstallationException e) {
+                message = "Please install ARCore";
+                exception = e;
+            } catch (UnavailableApkTooOldException e) {
+                message = "Please update ARCore";
+                exception = e;
+            } catch (UnavailableSdkTooOldException e) {
+                message = "Please update this app";
+                exception = e;
+            } catch (UnavailableDeviceNotCompatibleException e) {
+                message = "This device does not support AR";
+                exception = e;
+            } catch (Exception e) {
+                message = "Failed to create AR session";
+                exception = e;
+            }
+
+            if (message != null) {
+                messageSnackbarHelper.showError(this, message);
+                Log.e(TAG, "Exception creating session", exception);
+                return;
+            }
+        }
+
+        // Note that order matters - see the note in onPause(), the reverse applies here.
+        try {
+            arSession.resume();
+        } catch (CameraNotAvailableException e) {
+            // In some cases (such as another camera app launching) the camera may be given to
+            // a different app instead. Handle this properly by showing a message and recreate the
+            // session at the next iteration.
+            messageSnackbarHelper.showError(this, "Camera not available. Please restart the app.");
+            arSession = null;
+            return;
+        }
+
+        surfaceView.onResume();
+        displayRotationHelper.onResume();
+
+        messageSnackbarHelper.showMessage(this, "Searching for surfaces...");
+    }
+
+    @Override
+    public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+        GLES20.glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+
+        // Prepare the rendering objects. This involves reading shaders, so may throw an IOException.
+        try {
+            // Create the texture and pass it to ARCore session to be filled during update().
+            backgroundRenderer.createOnGlThread(/*context=*/ this);
+            planeRenderer.createOnGlThread(/*context=*/ this, "models/trigrid.png");
+            pointCloudRenderer.createOnGlThread(/*context=*/ this);
+
+            virtualObjectShadow.createOnGlThread(
+                    /*context=*/ this, "models/andy_shadow.obj", "models/andy_shadow.png");
+            virtualObjectShadow.setBlendMode(ObjectRenderer.BlendMode.Shadow);
+            virtualObjectShadow.setMaterialProperties(1.0f, 0.0f, 0.0f, 1.0f);
+
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to read an asset file", e);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        //FullScreenHelper.setFullScreenOnWindowFocusChanged(this, hasFocus);
+    }
+
+    @Override
+    public void onSurfaceChanged(GL10 gl, int width, int height) {
+        displayRotationHelper.onSurfaceChanged(width, height);
+        GLES20.glViewport(0, 0, width, height);
+    }
+
+    @Override
+    public void onDrawFrame(GL10 gl) {
+        // Clear screen to notify driver it should not load any pixels from previous frame.
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+
+        if (arSession == null) {
+            Log.e(TAG, "SESSION IS NULL");
+            return;
+        }
+        // Notify ARCore session that the view size changed so that the perspective matrix and
+        // the video background can be properly adjusted.
+        displayRotationHelper.updateSessionIfNeeded(arSession);
+
+        try {
+            arSession.setCameraTextureName(backgroundRenderer.getTextureId());
+
+            // Obtain the current frame from ARSession. When the configuration is set to
+            // UpdateMode.BLOCKING (it is by default), this will throttle the rendering to the
+            // camera framerate.
+            Frame frame = arSession.update();
+            Camera camera = frame.getCamera();
+
+            // Handle one tap per frame.
+
+            // Draw background.
+            backgroundRenderer.draw(frame);
+
+            // If not tracking, don't draw 3d objects.
+            if (camera.getTrackingState() == TrackingState.PAUSED) {
+                return;
+            }
+
+            // Get projection matrix.
+            float[] projmtx = new float[16];
+            camera.getProjectionMatrix(projmtx, 0, 0.1f, 100.0f);
+
+            // Get camera matrix and draw.
+            float[] viewmtx = new float[16];
+            camera.getViewMatrix(viewmtx, 0);
+
+            // Compute lighting from average intensity of the image.
+            // The first three components are color scaling factors.
+            // The last one is the average pixel intensity in gamma space.
+            final float[] colorCorrectionRgba = new float[4];
+            frame.getLightEstimate().getColorCorrection(colorCorrectionRgba, 0);
+
+            // Visualize tracked points.
+            PointCloud pointCloud = frame.acquirePointCloud();
+            pointCloudRenderer.update(pointCloud);
+            pointCloudRenderer.draw(viewmtx, projmtx);
+
+            // Application is responsible for releasing the point cloud resources after
+            // using it.
+            pointCloud.release();
+
+            // Check if we detected at least one plane. If so, hide the loading message.
+            if (messageSnackbarHelper.isShowing()) {
+                for (Plane plane : arSession.getAllTrackables(Plane.class)) {
+                    if (plane.getTrackingState() == TrackingState.TRACKING) {
+                        messageSnackbarHelper.hide(this);
+                        break;
+                    }
+                }
+            }
+
+            // Visualize planes.
+            planeRenderer.drawPlanes(
+                    arSession.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
+
+        } catch (Throwable t) {
+            // Avoid crashing the application due to unhandled exceptions.
+            Log.e(TAG, "Exception on the OpenGL thread", t);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        if (!CameraPermissionHelper.hasCameraPermission(this)) {
+            Toast.makeText(this, "Camera permission is needed to run this application", Toast.LENGTH_LONG)
+                    .show();
+            if (!CameraPermissionHelper.shouldShowRequestPermissionRationale(this)) {
+                // Permission denied with checking "Do not ask again".
+                CameraPermissionHelper.launchPermissionSettings(this);
+            }
+            finish();
+        }
+    }
+
 }
