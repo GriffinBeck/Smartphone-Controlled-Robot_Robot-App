@@ -12,12 +12,6 @@ import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.SurfaceTexture;
-import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraDevice;
-import android.hardware.camera2.CaptureRequest;
-import android.media.Image;
-import android.media.ImageReader;
 import android.opengl.GLES20;
 import android.opengl.GLException;
 import android.opengl.GLSurfaceView;
@@ -40,7 +34,6 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.ToggleButton;
 
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Camera;
@@ -59,7 +52,6 @@ import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationExceptio
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
-import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Set;
 
@@ -107,37 +99,11 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
             }
         }
     };
-    private final ImageReader.OnImageAvailableListener mOnImageAvailableListener
-            = new ImageReader.OnImageAvailableListener() {
-
-        @Override
-        public void onImageAvailable(final ImageReader reader) {
-
-            // Process the image.
-            Image image = reader.acquireNextImage();
-            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-            final byte[] bytes = new byte[buffer.remaining()];
-            buffer.get(bytes);
-            image.close();
-        }
-    };
     //Camera Streaming
-    //private Camera mCamera;
-    //public MyCameraView cameraPreview;
-    public TextView serverStatus;
-    protected CameraDevice cameraDevice;
-    protected CameraCaptureSession cameraCaptureSessions;
-    protected CaptureRequest captureRequest;
-    protected CaptureRequest.Builder captureRequestBuilder;
-    SurfaceTexture mPreviewSurfaceTexture;
     private Handler cameraHandler;
     //End of Camera Stream vars
-    private ToggleButton toggleSerial;
-    private ToggleButton toggleServer;
-    private TextView ipText;
     private ScrollView consoleScroll;
     private TextView console;
-    //private Server server;
     private ClientThread clientThread;
     private MyHandler mHandler;
     private final ServiceConnection usbConnection = new ServiceConnection() {
@@ -157,34 +123,9 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
     private Menu menu;
     //Start Camera2 Code
     private Handler cameraCaptuerHandler;
-    private byte[] bitmapArrayToSend;
+    private int[] bitmapArrayToSend;
     private long timeOfLastFrame;
-    private Runnable cameraViewChecker = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                cameraHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (CurrentCommandHolder.serverConnectionOpen && CurrentCommandHolder.isIsCameraOpen()) {
-
-                            joystick.setVisibility(View.INVISIBLE);
-                            Log.i("RobotControl", "Queued Frame");
-                            if (bitmapArrayToSend != null)
-                                CurrentCommandHolder.addNetworkPacket(new BackLoadedCommandPacket(new String[]{CommandArguments.BACKLOADED_PACKET_IMG.toString()}, bitmapArrayToSend));
-                        } else {
-                            joystick.setVisibility(View.VISIBLE);
-                        }
-
-                    }
-                }); //this function can change value of mInterval.
-            } finally {
-                // 100% guarantee that this always happens, even if
-                // your update method throws an exception
-                cameraHandler.postDelayed(cameraViewChecker, 1000 / 10);
-            }
-        }
-    };
+    private int height, width;
 
     private byte[] getBitMapByteArray(Bitmap bitmap) {
         //Bitmap bmp = intent.getExtras().get("data");
@@ -408,75 +349,34 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
     private boolean installRequested;
     private Session arSession;
     private DisplayRotationHelper displayRotationHelper;
+    private Runnable cameraViewChecker = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                cameraHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (CurrentCommandHolder.serverConnectionOpen && CurrentCommandHolder.isIsCameraOpen()) {
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        joystick = new JoystickView(this);
-        setContentView(R.layout.activity_main);
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.INTERNET}, 101);
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 101);
-        }
-        if (ContextCompat.checkSelfPermission(this, "com.android.example.USB_PERMISSION") != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
-            ActivityCompat.requestPermissions(this, new String[]{"com.android.example.USB_PERMISSION"}, 101);
-        }
-        arCoreOnCreate();
-        //Camera2
-        cameraHandler = new Handler(Looper.myLooper());
-        cameraViewChecker.run();
-        //End Camera2 Code
-        //ipText = findViewById(R.id.ipAddress);
-        consoleScroll = findViewById(R.id.consoleScroll);
-        console = findViewById(R.id.console);
-        consoleScroll.fullScroll(View.FOCUS_DOWN);
-        //server = new Server(getLocalIpAddress());
-        mHandler = new MyHandler(this);
-        /*toggleSerial.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
-                if (isChecked) {
-                    CurrentCommandHolder.startThread(MainActivity.this);
-                    //serialComms.startAutoSerial();
-                } else {
-                    CurrentCommandHolder.stopThread(MainActivity.this);
-                    //serialComms.stopAutoSerial();
-                }
-            }
-        });
-        toggleServer.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
-                *//**
-         * TODO: Convert to one time button press
-         *//*
-                //Log.e("BUTTON", "BUTTTON WAS PRESSED Casdasdasdasdasdasdasda");
-                if (isChecked) {
-                    //Log.e("BUTTON", "BUTTTON WAS PRESSED CORRECTLY");
-                    //server.startServer();
-                    openConnectionDialog();
-                    *//*new Timer().schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (CurrentCommandHolder.serverSatus) {
-                                        ipText.setText("IP Address: " + CurrentCommandHolder.getIp() + ":" + CurrentCommandHolder.getPort());
-                                    }
-                                }
-                            });
+                            joystick.setVisibility(View.INVISIBLE);
+                            Log.i("RobotControl", "Queued Frame");
+                            if (bitmapArrayToSend != null) {
+                                //CurrentCommandHolder.addNetworkPacket(new BackLoadedCommandPacket(new String[]{CommandArguments.BACKLOADED_PACKET_IMG.toString()}, bitmapToByteArray(bitmapFromSourceArray(bitmapArrayToSend, width, height))));
+                                CurrentCommandHolder.addNetworkPacket(new BackLoadedCommandPacket(new String[]{CommandArguments.BACKLOADED_PACKET_IMG.toString()}, gl_pixelArrayToBitmapWEBPArray(bitmapArrayToSend, width, height)));
+                            }
+                        } else {
+                            joystick.setVisibility(View.VISIBLE);
                         }
-                    }, 1000);*//*
-                }
+
+                    }
+                }); //this function can change value of mInterval.
+            } finally {
+                // 100% guarantee that this always happens, even if
+                // your update method throws an exception
+                cameraHandler.postDelayed(cameraViewChecker, 1000 / 10);
             }
-        });*/
-        CurrentCommandHolder.usbService = new UsbService();
-        startService();
-        setFilters();
-    }
+        }
+    };
 
     @Override
     public void onResume() {
@@ -625,6 +525,75 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
     }
 
     @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        joystick = new JoystickView(this);
+        setContentView(R.layout.activity_main);
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.INTERNET}, 101);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 101);
+        }
+        if (ContextCompat.checkSelfPermission(this, "com.android.example.USB_PERMISSION") != PackageManager.PERMISSION_GRANTED) {// Permission is not granted
+            ActivityCompat.requestPermissions(this, new String[]{"com.android.example.USB_PERMISSION"}, 101);
+        }
+        arCoreOnCreate();
+        //Camera2
+        cameraHandler = new Handler(Looper.myLooper());
+        new Thread(cameraViewChecker).start();
+        //End Camera2 Code
+        //ipText = findViewById(R.id.ipAddress);
+        consoleScroll = findViewById(R.id.consoleScroll);
+        console = findViewById(R.id.console);
+        consoleScroll.fullScroll(View.FOCUS_DOWN);
+        //server = new Server(getLocalIpAddress());
+        mHandler = new MyHandler(this);
+        /*toggleSerial.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
+                if (isChecked) {
+                    CurrentCommandHolder.startThread(MainActivity.this);
+                    //serialComms.startAutoSerial();
+                } else {
+                    CurrentCommandHolder.stopThread(MainActivity.this);
+                    //serialComms.stopAutoSerial();
+                }
+            }
+        });
+        toggleServer.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
+                *//**
+         * TODO: Convert to one time button press
+         *//*
+                //Log.e("BUTTON", "BUTTTON WAS PRESSED Casdasdasdasdasdasdasda");
+                if (isChecked) {
+                    //Log.e("BUTTON", "BUTTTON WAS PRESSED CORRECTLY");
+                    //server.startServer();
+                    openConnectionDialog();
+                    *//*new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (CurrentCommandHolder.serverSatus) {
+                                        ipText.setText("IP Address: " + CurrentCommandHolder.getIp() + ":" + CurrentCommandHolder.getPort());
+                                    }
+                                }
+                            });
+                        }
+                    }, 1000);*//*
+                }
+            }
+        });*/
+        CurrentCommandHolder.usbService = new UsbService();
+        startService();
+        setFilters();
+    }
+
+    @Override
     public void onDrawFrame(GL10 gl) {
         // Clear screen to notify driver it should not load any pixels from previous frame.
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
@@ -692,8 +661,9 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
             // Visualize planes.
             planeRenderer.drawPlanes(
                     arSession.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
-            if (System.currentTimeMillis() - 100 > timeOfLastFrame) {
-                bitmapArrayToSend = createBitmapArrayFromGLSurface(0, 0, surfaceView.getWidth(), surfaceView.getHeight(), gl);
+            if (System.currentTimeMillis() - 100 > timeOfLastFrame /*&& CurrentCommandHolder.isIsCameraOpen()*/) {
+                //bitmapArrayToSend = createBitmapArrayFromGLSurface(0, 0, surfaceView.getWidth(), surfaceView.getHeight(), gl);
+                bitmapArrayToSend = glPixelArray(0, 0, surfaceView.getWidth(), surfaceView.getHeight(), gl);
             }
         } catch (Throwable t) {
             // Avoid crashing the application due to unhandled exceptions.
@@ -701,7 +671,38 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         }
     }
 
-    private byte[] createBitmapArrayFromGLSurface(int x, int y, int w, int h, GL10 gl)
+    private byte[] gl_pixelArrayToBitmapWEBPArray(int[] gl_buffer, int width, int height) {
+        int bitmapSource[] = new int[width * height];
+        int offset1, offset2;
+        for (int i = 0; i < height; i++) {
+            offset1 = i * width;
+            offset2 = (height - i - 1) * width;
+            for (int j = 0; j < width; j++) {
+                int texturePixel = gl_buffer[offset1 + j];
+                int blue = (texturePixel >> 16) & 0xff;
+                int red = (texturePixel << 16) & 0x00ff0000;
+                int pixel = (texturePixel & 0xff00ff00) | red | blue;
+                bitmapSource[offset2 + j] = pixel;
+            }
+        }
+        return bitmapToByteArray(bitmapFromSourceArray(bitmapSource, width, height));
+    }
+
+    private int[] glPixelArray(int x, int y, int w, int h, GL10 gl) {
+        int[] buffer = new int[w * h];
+        IntBuffer intBuffer = IntBuffer.wrap(buffer);
+        intBuffer.position(0);
+        try {
+            gl.glReadPixels(x, y, w, h, GL10.GL_RGBA, GL10.GL_UNSIGNED_BYTE, intBuffer);
+            width = w;
+            height = h;
+            return buffer;
+        } catch (GLException e) {
+            return null;
+        }
+    }
+
+    private int[] createBitmapArrayFromGLSurface(int x, int y, int w, int h, GL10 gl)
             throws OutOfMemoryError {
         int bitmapBuffer[] = new int[w * h];
         int bitmapSource[] = new int[w * h];
@@ -725,11 +726,24 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         } catch (GLException e) {
             return null;
         }
-        ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        Bitmap.createBitmap(bitmapSource, w, h, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.WEBP, 10, stream);
+        height = h;
+        width = w;
+        return bitmapSource;
+        /*ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        Bitmap.createBitmap(bitmapSource, w, h, Bitmap.Config.ARGB_8888);
 
-        return stream.toByteArray();
+        return stream.toByteArray();*/
         //return Bitmap.createBitmap(bitmapSource, w, h, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.WEBP,10,);
+    }
+
+    private Bitmap bitmapFromSourceArray(int[] arr, int w, int h) {
+        return Bitmap.createBitmap(arr, w, h, Bitmap.Config.ARGB_8888);
+    }
+
+    private byte[] bitmapToByteArray(Bitmap bitmap) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.WEBP, 10, stream);
+        return stream.toByteArray();
     }
 
     @Override
