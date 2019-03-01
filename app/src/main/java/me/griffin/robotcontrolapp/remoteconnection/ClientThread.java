@@ -224,6 +224,10 @@ public class ClientThread extends Thread {
                 CurrentCommandHolder.setIsCameraOpen(true);
                 clientConnectionManager.sendPacket(new CommandPacket(Commands.RESPONSE, CommandArguments.RESPONSE_IMG));
             }
+            if (CommandArguments.REQUEST_AUTONOMOUS.equals(packet.getArg(0))) {
+                CurrentCommandHolder.autonomousEnabled = true;
+                clientConnectionManager.sendPacket(new CommandPacket(Commands.RESPONSE, CommandArguments.RESPONSE_AUTONOMOUS));
+            }
         }
     }
 

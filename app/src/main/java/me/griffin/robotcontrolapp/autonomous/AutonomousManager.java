@@ -11,6 +11,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+import me.griffin.robotcontrolapp.CurrentCommandHolder;
+
 public class AutonomousManager {
     private Session session;
     private boolean doRun;
@@ -39,13 +41,14 @@ public class AutonomousManager {
         // Get transformed Y axis of plane's coordinate system.
         planePose.getTransformedAxis(1, 1.0f, normal, 0);
         // Compute dot product of plane's normal with v
-        // ector from camera to plane center.
+        // Vector from camera to plane center.
         return (cameraX - planePose.tx()) * normal[0]
                 + (cameraY - planePose.ty()) * normal[1]
                 + (cameraZ - planePose.tz()) * normal[2];
     }
 
-    public void updateFrame(Frame frame) {
+
+    public static void updateFrame(Frame frame) {
         Collection<Plane> allPlanes = frame.getUpdatedTrackables(Plane.class);
         List<AutonomousManager.SortablePlane> sortedPlanes = new ArrayList<>();
 
@@ -63,11 +66,30 @@ public class AutonomousManager {
         Collections.sort(
                 sortedPlanes,
                 (a, b) -> Float.compare(a.distance, b.distance));
+        boolean canDrive = false;
         for (SortablePlane plane : sortedPlanes) {
             if (plane.plane.getType().equals(Plane.Type.HORIZONTAL_UPWARD_FACING)) {
-
+                if (isInFrontOfRobot(plane))
+                    canDrive = true;
             }
         }
+        if (canDrive) {
+            CurrentCommandHolder.addCommand("d", .2, 0);
+        } else {
+            CurrentCommandHolder.addCommand("d", 0, 0);
+        }
+    }
+
+    private static boolean isInFrontOfRobot(SortablePlane plane) {
+        Pose planeCenter = plane.plane.getCenterPose();
+        float extentX = plane.plane.getExtentX();
+        float extentZ = plane.plane.getExtentX();
+        if (extentZ / 2 + planeCenter.tz() < -.25) {
+            if (extentX >= .25) {
+                return extentX / 2 + planeCenter.tx() > .10 && planeCenter.tx() - extentX / 2 < -.10;
+            }
+        }
+        return false;
     }
 
     static class SortablePlane {

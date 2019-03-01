@@ -19,6 +19,7 @@ public class CurrentCommandHolder {
     public static boolean serverConnectionOpen;
     public static UsbService usbService;
     public static SerialThread serialThread;
+    public static boolean autonomousEnabled = false;
     /**
      * TODO: Make getting of data thread safe
      */

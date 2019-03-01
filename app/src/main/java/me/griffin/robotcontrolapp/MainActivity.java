@@ -66,6 +66,7 @@ import me.griffin.robotcontrolapp.arcore.rendering.BackgroundRenderer;
 import me.griffin.robotcontrolapp.arcore.rendering.ObjectRenderer;
 import me.griffin.robotcontrolapp.arcore.rendering.PlaneRenderer;
 import me.griffin.robotcontrolapp.arcore.rendering.PointCloudRenderer;
+import me.griffin.robotcontrolapp.autonomous.AutonomousManager;
 import me.griffin.robotcontrolapp.remoteconnection.ClientThread;
 import me.griffinbeck.server.BackLoadedCommandPacket;
 import me.griffinbeck.server.cmdresponses.CommandArguments;
@@ -401,7 +402,7 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
 
     private void arCoreOnCreate() {
         surfaceView = findViewById(R.id.camera_preview);
-        displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
+        displayRotationHelper = new DisplayRotationHelper(this);
 
         // Set up renderer.
         surfaceView.setPreserveEGLContextOnPause(true);
@@ -549,45 +550,7 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
         consoleScroll.fullScroll(View.FOCUS_DOWN);
         //server = new Server(getLocalIpAddress());
         mHandler = new MyHandler(this);
-        /*toggleSerial.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
-                if (isChecked) {
-                    CurrentCommandHolder.startThread(MainActivity.this);
-                    //serialComms.startAutoSerial();
-                } else {
-                    CurrentCommandHolder.stopThread(MainActivity.this);
-                    //serialComms.stopAutoSerial();
-                }
-            }
-        });
-        toggleServer.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                //Log.d("Main Method", "Button was ToggledAJASVDKBVJHBASKBAJSCAHCASC");
-                *//**
-         * TODO: Convert to one time button press
-         *//*
-                //Log.e("BUTTON", "BUTTTON WAS PRESSED Casdasdasdasdasdasdasda");
-                if (isChecked) {
-                    //Log.e("BUTTON", "BUTTTON WAS PRESSED CORRECTLY");
-                    //server.startServer();
-                    openConnectionDialog();
-                    *//*new Timer().schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (CurrentCommandHolder.serverSatus) {
-                                        ipText.setText("IP Address: " + CurrentCommandHolder.getIp() + ":" + CurrentCommandHolder.getPort());
-                                    }
-                                }
-                            });
-                        }
-                    }, 1000);*//*
-                }
-            }
-        });*/
+
         CurrentCommandHolder.usbService = new UsbService();
         startService();
         setFilters();
@@ -665,10 +628,14 @@ public class MainActivity extends AppCompatActivity implements JoystickView.Joys
                 //bitmapArrayToSend = createBitmapArrayFromGLSurface(0, 0, surfaceView.getWidth(), surfaceView.getHeight(), gl);
                 bitmapArrayToSend = glPixelArray(0, 0, surfaceView.getWidth(), surfaceView.getHeight(), gl);
             }
+            if (CurrentCommandHolder.autonomousEnabled) {
+                AutonomousManager.updateFrame(frame);
+            }
         } catch (Throwable t) {
             // Avoid crashing the application due to unhandled exceptions.
             Log.e(TAG, "Exception on the OpenGL thread", t);
         }
+
     }
 
     private byte[] gl_pixelArrayToBitmapWEBPArray(int[] gl_buffer, int width, int height) {
