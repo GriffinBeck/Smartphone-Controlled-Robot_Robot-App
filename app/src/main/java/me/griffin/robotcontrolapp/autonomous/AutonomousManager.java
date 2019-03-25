@@ -72,6 +72,9 @@ public class AutonomousManager {
                 if (isInFrontOfRobot(plane))
                     canDrive = true;
             }
+            if (plane.plane.getType().equals(Plane.Type.VERTICAL)) {
+
+            }
         }
         if (canDrive) {
             CurrentCommandHolder.addCommand("d", .2, 0);
