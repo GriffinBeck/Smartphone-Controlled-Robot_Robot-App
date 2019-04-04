@@ -11,33 +11,6 @@ import static java.lang.Math.sin;
  * Ported From Repository at https://github.com/agarie/vector-field-histogram
  */
 public class HistogramGrid {
-    grid_t grid_init(int dimension, int resolution) {
-        // TODO: Also `assert` that the resolution is within some reasonable values (???).
-        assert (dimension % 2 == 1);
-
-        grid_t grid = new grid_t();
-
-        if (grid == null) {
-            return null;
-        }
-
-        grid.dimension = dimension;
-        grid.resolution = resolution;
-        grid.cells = new int[dimension * dimension];
-
-        if (grid.cells == null) {
-            return null;
-        }
-
-        // Initial value, C_0 = 0.
-        for (int i = 0; i < dimension; ++i) {
-            for (int j = 0; j < dimension; ++j) {
-                grid.cells[i * dimension + j] = 0;
-            }
-        }
-
-        return grid;
-    }
 
     int grid_update(grid_t grid, int pos_x, int pos_y, final range_measure_t data) {
         if (grid == null) return 0;
@@ -48,7 +21,7 @@ public class HistogramGrid {
          ** corresponding cell's obstacle density.
          **
          ** Polar to cartesian:
-         **   (r, o) -> (r * cos(x), r * sin(y))
+         **   (r, o) . (r * cos(x), r * sin(y))
          **
          ** Remember that cos() and sin() expect angles in RADIANS, not DEGREES.
          */
@@ -65,6 +38,33 @@ public class HistogramGrid {
         return 1;
     }
 
+    /**
+     * Author: Griffin
+     * Adapted from grid_update
+     *
+     * @param grid   reference to grid object
+     * @param pos_x  position x of robot relative to grid
+     * @param pos_y  position y of robot relative to grid
+     * @param pointX detected object point x relative to robot
+     * @param pointY detected object point y relative to robot
+     * @return 0 if failed 1 if success
+     */
+    int gridUpdateCartesian(grid_t grid, int pos_x, int pos_y, double pointX, double pointY) {
+        if (grid == null) return 0;
+        if (grid.cells == null) return 0;
+
+        //Converts from parts of meter to uniform int ie. 2.3 m to 23 meaning a resolution of 10 points per meter
+        int new_pointX = (int) (pointX * grid.resolution) + pos_x;
+        int new_pointY = (int) (pointY * grid.resolution) + pos_y;
+
+        /* Is this point inside the grid? (to avoid overflows) */
+        if (pointX < grid.dimension && pointY < grid.dimension) {
+            grid.cells[new_pointX * grid.dimension + new_pointY] += 1;
+        }
+
+        return 1;
+    }
+
     /* TODO: Finish implementing get_moving_window. */
     grid_t get_moving_window(grid_t grid, int current_x, int current_y, int dimension) {
         /*
@@ -72,7 +72,7 @@ public class HistogramGrid {
          **
          ** If grid_init returns NULL, exit the function.
          */
-        grid_t moving_window = grid_init(dimension, grid.resolution);
+        grid_t moving_window = new grid_t(dimension, grid.resolution);
 
         if (moving_window != null) {
 
